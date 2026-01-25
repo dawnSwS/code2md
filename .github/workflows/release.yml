@@ -1,0 +1,84 @@
+name: Build Release Installer
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Application Icon
+        shell: bash
+        run: |
+          # 下载卷轴 emoji 作为图标 (适合文档工具)
+          curl -L "https://raw.githubusercontent.com/googlefonts/noto-emoji/main/png/128/emoji_u1f4dc.png" -o "app_icon.png"
+          magick app_icon.png -define icon:auto-resize=64,48,32,16 app_icon.ico
+
+      - name: Generate Smart Version
+        id: versioning
+        shell: bash
+        run: |
+          # 提取 version 行
+          VERSION_LINE=$(grep '^version\s*=' Cargo.toml | head -n 1)
+          # 提取 x.y
+          BASE_VERSION=$(echo "$VERSION_LINE" | sed -E 's/version\s*=\s*"([0-9]+\.[0-9]+).*/\1/')
+          
+          if [ -z "$BASE_VERSION" ]; then BASE_VERSION="1.0"; fi
+          
+          NEW_VERSION="${BASE_VERSION}.${{ github.run_number }}"
+          echo "::notice::Build Version: $NEW_VERSION"
+          
+          # 写入环境变量
+          echo "BUILD_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: Update Cargo Version
+        shell: bash
+        run: |
+          # 临时更新 Cargo.toml 中的版本号以匹配 Build 版本
+          sed -i "s/^version = \".*\"/version = \"$BUILD_VERSION\"/" Cargo.toml
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # --- 3. 缓存加速 ---
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: windows-release
+
+      # --- 4. 编译 Binary ---
+      - name: Build Binary (Release)
+        run: cargo build --release --verbose
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress
+
+      # --- 5. 编译安装包 (ISCC) ---
+      - name: Compile Installer
+        shell: cmd
+        run: |
+          REM 修改：将安装包前缀改为 Code2Markdown 以匹配功能变更
+          set "INSTALLER_NAME=Code2Markdown_Setup_v%BUILD_VERSION%"
+          
+          if not exist Output mkdir Output
+          
+          REM 使用 /F 参数覆盖 installer.iss 中的 OutputBaseFilename
+          iscc "/DMyAppVersion=%BUILD_VERSION%" "/OOutput" "/F%INSTALLER_NAME%" installer.iss
+          
+          echo INSTALLER_NAME=%INSTALLER_NAME%>> %GITHUB_ENV%
+
+      # --- 6. 上传结果 ---
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Code2Markdown_Installer_v${{ env.BUILD_VERSION }}
+          path: Output/${{ env.INSTALLER_NAME }}.exe

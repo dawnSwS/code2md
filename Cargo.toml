@@ -1,0 +1,17 @@
+[package]
+name = "code2xml"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+walkdir = "2.4"
+
+[build-dependencies]
+winres = "0.1"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = 3
+codegen-units = 1
+panic = "abort"
