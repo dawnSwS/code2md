@@ -55,6 +55,9 @@ jobs:
         with:
           key: windows-release
 
+      - name: Quick Check
+        run: cargo check --release
+
       # --- 4. 编译 Binary ---
       - name: Build Binary (Release)
         run: cargo build --release
