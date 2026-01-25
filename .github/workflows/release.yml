@@ -57,7 +57,7 @@ jobs:
 
       # --- 4. 编译 Binary ---
       - name: Build Binary (Release)
-        run: cargo build --release --verbose
+        run: cargo build --release
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress
